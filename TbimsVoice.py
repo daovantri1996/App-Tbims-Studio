@@ -396,6 +396,20 @@ DASHBOARD_HTML = """
 </body>
 </html>
 """
-
+@app.route('/tao_admin')
+def tao_admin():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Lệnh này tự động tạo mới nick TrangTbims, hoặc nếu nick đã có thì ép lên Admin
+    cur.execute("""
+        INSERT INTO users (username, password, is_admin, status, exp_date, hwid, app_id) 
+        VALUES ('TrangTbims', '22121998', TRUE, 'ACTIVE', 'Vĩnh viễn', '', 'TBIMS_Voice') 
+        ON CONFLICT (username) 
+        DO UPDATE SET is_admin = TRUE, password = '22121998', status = 'ACTIVE', exp_date = 'Vĩnh viễn'
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+    return "<h1 style='color: green;'>ĐÃ TẠO ADMIN TrangTbims THÀNH CÔNG!</h1><p>Bác hãy quay lại trang /admin để đăng nhập nhé.</p>"
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
