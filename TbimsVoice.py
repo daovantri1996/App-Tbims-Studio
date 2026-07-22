@@ -74,7 +74,6 @@ def register():
     except Exception as e:
         return jsonify({"detail": f"Lỗi Server: {str(e)}"}), 400
 
-
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
@@ -109,14 +108,15 @@ def login():
                 except ValueError:
                     pass
 
+            # ---- TÍNH NĂNG BẮT HWID + TỰ ĐỘNG KHÓA NẾU SAI MÁY ----
             if not db_hwid or db_hwid.strip() == '':
                 cur.execute('UPDATE users SET hwid = %s WHERE username = %s', (client_hwid, username))
                 conn.commit()
             elif db_hwid != client_hwid:
-                # KÍCH HOẠT TỰ ĐỘNG KHÓA KHI PHÁT HIỆN MÁY LẠ
+                # Ép trạng thái thành LOCKED ngay lập tức
                 cur.execute("UPDATE users SET status = 'LOCKED' WHERE username = %s", (username,))
                 conn.commit()
-                return jsonify({"detail": "CẢNH BÁO BẢN QUYỀN: Phát hiện đăng nhập trên máy khác! Tài khoản đã BỊ KHÓA vĩnh viễn. Liên hệ Admin!"}), 400
+                return jsonify({"detail": "CẢNH BÁO BẢN QUYỀN: Phát hiện đăng nhập máy lạ! Tài khoản BỊ KHÓA, liên hệ Admin."}), 400
 
             if status != 'ACTIVE': 
                 return jsonify({"detail": "Tài khoản của bạn đã bị KHÓA!"}), 400
@@ -129,7 +129,6 @@ def login():
     finally:
         if 'cur' in locals(): cur.close()
         if 'conn' in locals(): conn.close()
-
 
 def login_required(f):
     @wraps(f)
@@ -149,6 +148,7 @@ def admin_login():
         cur.close()
         conn.close()
         if res and res[0] is True:
+            # ---- ĐÃ SỬA LỖI ADMIN ĐĂNG NHẬP Ở ĐÂY ----
             session['admin_logged_in'] = True
             session['admin_username'] = user
             return redirect(url_for('admin_dashboard'))
@@ -390,20 +390,15 @@ DASHBOARD_HTML = """
             document.getElementById('actionForm').submit();
         }
         
-        // --- CHỐNG NGỦ GẬT CHO RENDER ---
         setInterval(function() {
             fetch('/api/config').then(response => {
-                console.log("Đã chọc Server thức dậy lúc: " + new Date().toLocaleTimeString());
+                console.log("Wake-up ping sent: " + new Date().toLocaleTimeString());
             }).catch(err => console.log(err));
         }, 840000);
     </script>
 </body>
 </html>
 """
-@app.route('/tao_admin')
-def tao_admin():
-    conn = get_db_connection()
-    ... (xóa hết đến chữ) ...
-    return "<h1 style='color: green;'>ĐÃ TẠO ADMIN TrangTbims THÀNH CÔNG!</h1><p>Bác hãy quay lại trang /admin để đăng nhập nhé.</p>"
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
