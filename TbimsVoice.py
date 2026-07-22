@@ -22,7 +22,6 @@ def setup_db():
     if not DATABASE_URL: return
     conn = get_db_connection()
     cur = conn.cursor()
-    # Bảng người dùng
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
@@ -36,7 +35,6 @@ def setup_db():
             reg_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    # Thêm cột nếu database cũ chưa có (tránh lỗi)
     try: cur.execute("ALTER TABLE users ADD COLUMN hwid VARCHAR(255)")
     except: pass
     try: cur.execute("ALTER TABLE users ADD COLUMN reg_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
@@ -44,7 +42,6 @@ def setup_db():
     try: cur.execute("ALTER TABLE users ADD COLUMN app_id VARCHAR(50)")
     except: pass
 
-    # Bảng cấu hình hệ thống (Phiên bản, Thông báo)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS config (
             key_name VARCHAR(50) PRIMARY KEY,
@@ -52,13 +49,12 @@ def setup_db():
         )
     ''')
     cur.execute("INSERT INTO config (key_name, key_value) VALUES ('version', '1.0'), ('notice', 'Chào mừng!') ON CONFLICT DO NOTHING")
-    
     conn.commit()
     cur.close()
     conn.close()
 
 # ==========================================
-# 2. API CHO TOOL DESKTOP CỦA BÁC
+# 2. API CHO TOOL DESKTOP
 # ==========================================
 @app.route('/api/config', methods=['GET'])
 def get_config():
@@ -76,7 +72,6 @@ def register():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        # Đăng ký thì chưa lưu HWID vội, để lúc Login nó tự khóa máy
         cur.execute('INSERT INTO users (username, password, app_id, hwid) VALUES (%s, %s, %s, %s)',
                     (data.get('username'), data.get('password'), data.get('app_id'), ''))
         conn.commit()
@@ -93,7 +88,7 @@ def login():
     data = request.json
     username = data.get('username')
     password = data.get('password')
-    client_hwid = data.get('hwid') # Mã máy tính tool gửi lên
+    client_hwid = data.get('hwid')
 
     try:
         conn = get_db_connection()
@@ -103,28 +98,16 @@ def login():
 
         if user:
             db_pass, status, exp_date, is_admin, db_hwid = user
-            
-            # 1. Sai pass
-            if password != db_pass:
-                return jsonify({"detail": "Sai mật khẩu!"}), 400
+            if password != db_pass: return jsonify({"detail": "Sai mật khẩu!"}), 400
+            if is_admin: return jsonify({"status": status, "exp_date": exp_date, "is_admin": True}), 200
 
-            # 2. KIỂM TRA QUYỀN ADMIN (Bỏ qua HWID)
-            if is_admin:
-                return jsonify({"status": status, "exp_date": exp_date, "is_admin": True}), 200
-
-            # 3. KIỂM TRA HWID CHO KHÁCH THƯỜNG
             if not db_hwid or db_hwid.strip() == '':
-                # Lần đầu đăng nhập hoặc vừa bị Reset -> Khóa cứng HWID máy này luôn
                 cur.execute('UPDATE users SET hwid = %s WHERE username = %s', (client_hwid, username))
                 conn.commit()
             elif db_hwid != client_hwid:
-                # Trót mang sang máy khác
                 return jsonify({"detail": "Sai mã máy tính (HWID)! Hãy liên hệ Admin."}), 400
 
-            # 4. Kiểm tra trạng thái khóa
-            if status != 'ACTIVE':
-                return jsonify({"detail": "Tài khoản của bạn đã bị KHÓA!"}), 400
-
+            if status != 'ACTIVE': return jsonify({"detail": "Tài khoản của bạn đã bị KHÓA!"}), 400
             return jsonify({"status": status, "exp_date": exp_date, "is_admin": False}), 200
         else:
             return jsonify({"detail": "Tài khoản không tồn tại!"}), 400
@@ -155,7 +138,6 @@ def admin_login():
         res = cur.fetchone()
         cur.close()
         conn.close()
-
         if res and res[0] is True:
             session['admin_logged_in'], session['admin_username'] = True, user
             return redirect(url_for('admin_dashboard'))
@@ -172,17 +154,15 @@ def admin_logout():
 def admin_dashboard():
     conn = get_db_connection()
     cur = conn.cursor()
-    # Móc thêm app_id ra hiển thị (Nằm ở vị trí số 7)
-    cur.execute("SELECT id, username, hwid, status, exp_date, is_admin, TO_CHAR(reg_date, 'DD/MM/YYYY'), app_id FROM users ORDER BY id DESC")
+    # Lấy thêm trường password (ở vị trí u[8])
+    cur.execute("SELECT id, username, hwid, status, exp_date, is_admin, TO_CHAR(reg_date, 'DD/MM/YYYY'), app_id, password FROM users ORDER BY id DESC")
     users = cur.fetchall()
-    # Lấy cấu hình
     cur.execute("SELECT key_name, key_value FROM config")
     cfg = dict(cur.fetchall())
     cur.close()
     conn.close()
     return render_template_string(DASHBOARD_HTML, users=users, admin_name=session.get('admin_username'), cfg=cfg)
 
-# Chức năng xử lý hệ thống (Version, Thông báo)
 @app.route('/admin/sys_action', methods=['POST'])
 @login_required
 def sys_action():
@@ -197,7 +177,6 @@ def sys_action():
     conn.close()
     return redirect(url_for('admin_dashboard'))
 
-# Chức năng xử lý từng người dùng
 @app.route('/admin/user_action', methods=['POST'])
 @login_required
 def user_action():
@@ -221,7 +200,7 @@ def user_action():
     return redirect(url_for('admin_dashboard'))
 
 # ==========================================
-# 4. HTML GIAO DIỆN DARK MODE (Đã thêm App ID)
+# 4. HTML GIAO DIỆN DARK MODE
 # ==========================================
 LOGIN_HTML = """
 <!DOCTYPE html>
@@ -261,6 +240,8 @@ DASHBOARD_HTML = """
         .table-dark { --bs-table-bg: #1e1e1e; }
         .btn-xs { padding: 0.1rem 0.4rem; font-size: 0.8rem; margin: 2px; }
         th { color: #0dcaf0 !important; }
+        .eye-btn { cursor: pointer; background: none; border: none; font-size: 1.1rem; padding: 0; outline: none; }
+        .eye-btn:hover { opacity: 0.7; }
     </style>
 </head>
 <body>
@@ -299,6 +280,7 @@ DASHBOARD_HTML = """
                 <thead>
                     <tr class="text-center text-nowrap">
                         <th>Tài khoản</th>
+                        <th>Mật Khẩu</th> <!-- Cột mới thêm -->
                         <th>App ID</th>
                         <th>Mã Máy (HWID)</th>
                         <th>Ngày Đăng Ký</th>
@@ -314,11 +296,16 @@ DASHBOARD_HTML = """
                             {{ u[1] }} {% if u[5] %}(Admin){% endif %}
                         </td>
                         
-                        <!-- Cột App ID Mới -->
+                        <!-- Khu vực Mật Khẩu với nút Mắt 👁️ -->
                         <td>
-                            <span class="badge bg-secondary">{{ u[7] if u[7] else 'Trống' }}</span>
+                            <div class="d-flex align-items-center justify-content-center gap-2">
+                                <span id="pwd_mask_{{ u[0] }}" class="text-muted">••••••••</span>
+                                <span id="pwd_text_{{ u[0] }}" class="text-warning fw-bold" style="display: none;">{{ u[8] }}</span>
+                                <button class="eye-btn text-light" onclick="togglePwd({{ u[0] }})" title="Xem/Ẩn Mật Khẩu">👁️</button>
+                            </div>
                         </td>
                         
+                        <td><span class="badge bg-secondary">{{ u[7] if u[7] else 'Trống' }}</span></td>
                         <td><small class="text-muted">{{ u[2][:20] if u[2] else 'Chưa gắn' }}...</small></td>
                         <td>{{ u[6] }}</td>
                         <td class="fw-bold text-info">{{ u[4] }}</td>
@@ -360,6 +347,20 @@ DASHBOARD_HTML = """
     </form>
 
     <script>
+        // Cục JS hiển thị / che mật khẩu
+        function togglePwd(id) {
+            let mask = document.getElementById('pwd_mask_' + id);
+            let text = document.getElementById('pwd_text_' + id);
+            if (text.style.display === 'none') {
+                text.style.display = 'inline';
+                mask.style.display = 'none';
+            } else {
+                text.style.display = 'none';
+                mask.style.display = 'inline';
+            }
+        }
+
+        // Cục JS tìm kiếm
         document.getElementById('searchInput').addEventListener('keyup', function() {
             let filter = this.value.toLowerCase();
             let rows = document.querySelectorAll('#userTable tbody tr');
