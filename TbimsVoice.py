@@ -36,10 +36,12 @@ def setup_db():
             reg_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    # Thêm cột nếu database cũ chưa có
+    # Thêm cột nếu database cũ chưa có (tránh lỗi)
     try: cur.execute("ALTER TABLE users ADD COLUMN hwid VARCHAR(255)")
     except: pass
     try: cur.execute("ALTER TABLE users ADD COLUMN reg_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    except: pass
+    try: cur.execute("ALTER TABLE users ADD COLUMN app_id VARCHAR(50)")
     except: pass
 
     # Bảng cấu hình hệ thống (Phiên bản, Thông báo)
@@ -170,8 +172,8 @@ def admin_logout():
 def admin_dashboard():
     conn = get_db_connection()
     cur = conn.cursor()
-    # Lấy danh sách khách
-    cur.execute("SELECT id, username, hwid, status, exp_date, is_admin, TO_CHAR(reg_date, 'DD/MM/YYYY') FROM users ORDER BY id DESC")
+    # Móc thêm app_id ra hiển thị (Nằm ở vị trí số 7)
+    cur.execute("SELECT id, username, hwid, status, exp_date, is_admin, TO_CHAR(reg_date, 'DD/MM/YYYY'), app_id FROM users ORDER BY id DESC")
     users = cur.fetchall()
     # Lấy cấu hình
     cur.execute("SELECT key_name, key_value FROM config")
@@ -195,7 +197,7 @@ def sys_action():
     conn.close()
     return redirect(url_for('admin_dashboard'))
 
-# Chức năng xử lý từng người dùng (Trùng khớp với các nút trong ảnh của bác)
+# Chức năng xử lý từng người dùng
 @app.route('/admin/user_action', methods=['POST'])
 @login_required
 def user_action():
@@ -212,7 +214,6 @@ def user_action():
     elif act == 'delete': cur.execute("DELETE FROM users WHERE id = %s", (uid,))
     elif act == 'extend': cur.execute("UPDATE users SET exp_date = %s, status='ACTIVE' WHERE id = %s", (val, uid))
     elif act == 'change_pass': cur.execute("UPDATE users SET password = %s WHERE id = %s", (val, uid))
-    elif act == 'set_admin': cur.execute("UPDATE users SET is_admin = %s WHERE id = %s", (val=='true', uid))
     
     conn.commit()
     cur.close()
@@ -220,7 +221,7 @@ def user_action():
     return redirect(url_for('admin_dashboard'))
 
 # ==========================================
-# 4. HTML GIAO DIỆN DARK MODE
+# 4. HTML GIAO DIỆN DARK MODE (Đã thêm App ID)
 # ==========================================
 LOGIN_HTML = """
 <!DOCTYPE html>
@@ -274,10 +275,9 @@ DASHBOARD_HTML = """
     </nav>
 
     <div class="container-fluid px-4">
-        <!-- Khu vực Control Hệ thống (Giống ảnh) -->
         <div class="row mb-3 g-2">
             <div class="col-md-3">
-                <input type="text" id="searchInput" class="form-control bg-dark text-white" placeholder="🔍 Tìm khách hàng...">
+                <input type="text" id="searchInput" class="form-control bg-dark text-white" placeholder="🔍 Tìm khách hàng, App ID...">
             </div>
             <div class="col-md-9 d-flex gap-2 flex-wrap">
                 <button onclick="location.reload()" class="btn btn-secondary">🔄 TẢI LẠI</button>
@@ -294,12 +294,12 @@ DASHBOARD_HTML = """
             </div>
         </div>
 
-        <!-- Bảng danh sách -->
         <div class="table-responsive border border-secondary rounded">
             <table class="table table-dark table-hover table-bordered align-middle mb-0" id="userTable">
                 <thead>
                     <tr class="text-center text-nowrap">
                         <th>Tài khoản</th>
+                        <th>App ID</th>
                         <th>Mã Máy (HWID)</th>
                         <th>Ngày Đăng Ký</th>
                         <th>Ngày Hết Hạn</th>
@@ -313,6 +313,12 @@ DASHBOARD_HTML = """
                         <td class="fw-bold {% if u[5] %}text-warning{% else %}text-light{% endif %}">
                             {{ u[1] }} {% if u[5] %}(Admin){% endif %}
                         </td>
+                        
+                        <!-- Cột App ID Mới -->
+                        <td>
+                            <span class="badge bg-secondary">{{ u[7] if u[7] else 'Trống' }}</span>
+                        </td>
+                        
                         <td><small class="text-muted">{{ u[2][:20] if u[2] else 'Chưa gắn' }}...</small></td>
                         <td>{{ u[6] }}</td>
                         <td class="fw-bold text-info">{{ u[4] }}</td>
@@ -321,7 +327,6 @@ DASHBOARD_HTML = """
                             {% else %}<span class="badge bg-danger">Khóa mõm</span>{% endif %}
                         </td>
                         <td class="text-nowrap">
-                            <!-- Nhóm nút giống ảnh Tool -->
                             <form action="/admin/user_action" method="POST" class="d-inline">
                                 <input type="hidden" name="user_id" value="{{ u[0] }}">
                                 
@@ -355,7 +360,6 @@ DASHBOARD_HTML = """
     </form>
 
     <script>
-        // Cục tìm kiếm khách hàng bằng JS (Gõ đến đâu lọc đến đó)
         document.getElementById('searchInput').addEventListener('keyup', function() {
             let filter = this.value.toLowerCase();
             let rows = document.querySelectorAll('#userTable tbody tr');
@@ -365,13 +369,11 @@ DASHBOARD_HTML = """
             });
         });
 
-        // Hàm bật bảng hỏi ngày gia hạn
         function promptExtend(uid, oldDate) {
             let newDate = prompt("Nhập hạn sử dụng mới (VD: 30/12/2026):", oldDate);
             if (newDate) submitAction(uid, 'extend', newDate);
         }
 
-        // Hàm bật bảng đổi pass
         function promptPass(uid) {
             let newPass = prompt("Nhập mật khẩu mới cho khách này:");
             if (newPass) submitAction(uid, 'change_pass', newPass);
