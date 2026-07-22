@@ -113,7 +113,10 @@ def login():
                 cur.execute('UPDATE users SET hwid = %s WHERE username = %s', (client_hwid, username))
                 conn.commit()
             elif db_hwid != client_hwid:
-                return jsonify({"detail": "Sai mã máy tính (HWID)! Hãy liên hệ Admin."}), 400
+                # KÍCH HOẠT TỰ ĐỘNG KHÓA KHI PHÁT HIỆN MÁY LẠ
+                cur.execute("UPDATE users SET status = 'LOCKED' WHERE username = %s", (username,))
+                conn.commit()
+                return jsonify({"detail": "CẢNH BÁO BẢN QUYỀN: Phát hiện đăng nhập trên máy khác! Tài khoản đã BỊ KHÓA vĩnh viễn. Liên hệ Admin!"}), 400
 
             if status != 'ACTIVE': 
                 return jsonify({"detail": "Tài khoản của bạn đã bị KHÓA!"}), 400
@@ -400,17 +403,7 @@ DASHBOARD_HTML = """
 @app.route('/tao_admin')
 def tao_admin():
     conn = get_db_connection()
-    cur = conn.cursor()
-    # Lệnh này tự động tạo mới nick TrangTbims, hoặc nếu nick đã có thì ép lên Admin
-    cur.execute("""
-        INSERT INTO users (username, password, is_admin, status, exp_date, hwid, app_id) 
-        VALUES ('TrangTbims', '22121998', TRUE, 'ACTIVE', 'Vĩnh viễn', '', 'TBIMS_Voice') 
-        ON CONFLICT (username) 
-        DO UPDATE SET is_admin = TRUE, password = '22121998', status = 'ACTIVE', exp_date = 'Vĩnh viễn'
-    """)
-    conn.commit()
-    cur.close()
-    conn.close()
+    ... (xóa hết đến chữ) ...
     return "<h1 style='color: green;'>ĐÃ TẠO ADMIN TrangTbims THÀNH CÔNG!</h1><p>Bác hãy quay lại trang /admin để đăng nhập nhé.</p>"
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
