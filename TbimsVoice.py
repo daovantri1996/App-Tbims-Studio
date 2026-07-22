@@ -78,9 +78,6 @@ def register():
         return jsonify({"detail": f"Lỗi Server: {str(e)}"}), 400
 
 
-# ==========================================
-# 🔥 BỘ LỌC LOGIN SIÊU BẢO MẬT 🔥
-# ==========================================
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
@@ -97,39 +94,30 @@ def login():
         if user:
             db_pass, status, exp_date, is_admin, db_hwid = user
             
-            # 1. Sai pass đuổi luôn
             if password != db_pass: 
                 return jsonify({"detail": "Sai mật khẩu!"}), 400
             
-            # 2. ADMIN CÓ KIM BÀI MIỄN TỬ (Bỏ qua mọi kiểm tra)
             if is_admin: 
                 return jsonify({"status": status, "exp_date": exp_date, "is_admin": True}), 200
 
-            # 3. KHÁCH MỚI CHƯA DUYỆT CẤM VÀO
             exp_str = str(exp_date).strip().lower()
             if 'chưa' in exp_str or 'duyệt' in exp_str:
                 return jsonify({"detail": "Tài khoản đang chờ duyệt! Vui lòng liên hệ Admin."}), 400
 
-            # 4. KHÁCH ĐÃ HẾT HẠN SỬ DỤNG THEO NGÀY (VD: 20/07/2026)
             if exp_str != 'vĩnh viễn':
                 try:
                     exp_dt = datetime.strptime(str(exp_date).strip(), '%d/%m/%Y')
-                    # Nếu ngày hôm nay lớn hơn ngày hết hạn -> Khóa
                     if datetime.now() > exp_dt:
-                        # (Tùy chọn: Bác có thể auto Update trạng thái về LOCKED ở đây luôn cũng được)
                         return jsonify({"detail": f"Tài khoản của bạn đã hết hạn từ ngày {exp_date}!"}), 400
                 except ValueError:
-                    # Nếu Admin gõ sai định dạng ngày (không phải dạng DD/MM/YYYY) thì bỏ qua kiểm tra tự động
                     pass
 
-            # 5. KHÁCH ĐỔI MÁY / SAI HWID
             if not db_hwid or db_hwid.strip() == '':
                 cur.execute('UPDATE users SET hwid = %s WHERE username = %s', (client_hwid, username))
                 conn.commit()
             elif db_hwid != client_hwid:
                 return jsonify({"detail": "Sai mã máy tính (HWID)! Hãy liên hệ Admin."}), 400
 
-            # 6. KHÁCH BỊ ADMIN KHÓA MÕM
             if status != 'ACTIVE': 
                 return jsonify({"detail": "Tài khoản của bạn đã bị KHÓA!"}), 400
             
@@ -143,9 +131,6 @@ def login():
         if 'conn' in locals(): conn.close()
 
 
-# ==========================================
-# 3. GIAO DIỆN WEB ADMIN UI
-# ==========================================
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -223,9 +208,6 @@ def user_action():
     conn.close()
     return redirect(url_for('admin_dashboard'))
 
-# ==========================================
-# 4. HTML GIAO DIỆN DARK MODE
-# ==========================================
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html lang="vi" data-bs-theme="dark">
@@ -406,6 +388,17 @@ DASHBOARD_HTML = """
             document.getElementById('form_val').value = val;
             document.getElementById('actionForm').submit();
         }
+        
+        // --- CHỐNG NGỦ GẬT CHO RENDER ---
+        setInterval(function() {
+            fetch('/api/config').then(response => {
+                console.log("Đã chọc Server thức dậy lúc: " + new Date().toLocaleTimeString());
+            }).catch(err => console.log(err));
+        }, 840000);
     </script>
 </body>
 </html>
+"""
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
