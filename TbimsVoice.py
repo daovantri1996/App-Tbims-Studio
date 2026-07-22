@@ -98,16 +98,27 @@ def login():
 
         if user:
             db_pass, status, exp_date, is_admin, db_hwid = user
+            
+            # 1. Check Pass
             if password != db_pass: return jsonify({"detail": "Sai mật khẩu!"}), 400
+            
+            # 2. Admin Auto Pass
             if is_admin: return jsonify({"status": status, "exp_date": exp_date, "is_admin": True}), 200
 
+            # 3. Check HWID
             if not db_hwid or db_hwid.strip() == '':
                 cur.execute('UPDATE users SET hwid = %s WHERE username = %s', (client_hwid, username))
                 conn.commit()
             elif db_hwid != client_hwid:
                 return jsonify({"detail": "Sai mã máy tính (HWID)! Hãy liên hệ Admin."}), 400
 
+            # 4. KHÓA TÀI KHOẢN CHƯA DUYỆT (Chốt chặn mới thêm)
+            if exp_date == 'Chưa duyệt':
+                return jsonify({"detail": "Tài khoản đang chờ duyệt! Vui lòng liên hệ Admin."}), 400
+
+            # 5. Khóa mõm
             if status != 'ACTIVE': return jsonify({"detail": "Tài khoản của bạn đã bị KHÓA!"}), 400
+            
             return jsonify({"status": status, "exp_date": exp_date, "is_admin": False}), 200
         else:
             return jsonify({"detail": "Tài khoản không tồn tại!"}), 400
@@ -154,7 +165,6 @@ def admin_logout():
 def admin_dashboard():
     conn = get_db_connection()
     cur = conn.cursor()
-    # Lấy thêm trường password (ở vị trí u[8])
     cur.execute("SELECT id, username, hwid, status, exp_date, is_admin, TO_CHAR(reg_date, 'DD/MM/YYYY'), app_id, password FROM users ORDER BY id DESC")
     users = cur.fetchall()
     cur.execute("SELECT key_name, key_value FROM config")
@@ -280,7 +290,7 @@ DASHBOARD_HTML = """
                 <thead>
                     <tr class="text-center text-nowrap">
                         <th>Tài khoản</th>
-                        <th>Mật Khẩu</th> <!-- Cột mới thêm -->
+                        <th>Mật Khẩu</th>
                         <th>App ID</th>
                         <th>Mã Máy (HWID)</th>
                         <th>Ngày Đăng Ký</th>
@@ -296,7 +306,6 @@ DASHBOARD_HTML = """
                             {{ u[1] }} {% if u[5] %}(Admin){% endif %}
                         </td>
                         
-                        <!-- Khu vực Mật Khẩu với nút Mắt 👁️ -->
                         <td>
                             <div class="d-flex align-items-center justify-content-center gap-2">
                                 <span id="pwd_mask_{{ u[0] }}" class="text-muted">••••••••</span>
@@ -339,7 +348,6 @@ DASHBOARD_HTML = """
         </div>
     </div>
 
-    <!-- Form ẩn để gọi JS prompt -->
     <form id="actionForm" action="/admin/user_action" method="POST" style="display:none;">
         <input type="hidden" name="user_id" id="form_uid">
         <input type="hidden" name="action" id="form_act">
@@ -347,7 +355,6 @@ DASHBOARD_HTML = """
     </form>
 
     <script>
-        // Cục JS hiển thị / che mật khẩu
         function togglePwd(id) {
             let mask = document.getElementById('pwd_mask_' + id);
             let text = document.getElementById('pwd_text_' + id);
@@ -360,7 +367,6 @@ DASHBOARD_HTML = """
             }
         }
 
-        // Cục JS tìm kiếm
         document.getElementById('searchInput').addEventListener('keyup', function() {
             let filter = this.value.toLowerCase();
             let rows = document.querySelectorAll('#userTable tbody tr');
@@ -389,7 +395,3 @@ DASHBOARD_HTML = """
     </script>
 </body>
 </html>
-"""
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
