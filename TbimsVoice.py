@@ -18,6 +18,8 @@ def setup_db():
     if not DATABASE_URL: return
     conn = get_db_connection()
     cur = conn.cursor()
+    
+    # Tạo bảng Users
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
@@ -31,13 +33,8 @@ def setup_db():
             reg_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    try: cur.execute("ALTER TABLE users ADD COLUMN hwid VARCHAR(255)")
-    except: pass
-    try: cur.execute("ALTER TABLE users ADD COLUMN reg_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-    except: pass
-    try: cur.execute("ALTER TABLE users ADD COLUMN app_id VARCHAR(50)")
-    except: pass
 
+    # Tạo bảng Config
     cur.execute('''
         CREATE TABLE IF NOT EXISTS config (
             key_name VARCHAR(50) PRIMARY KEY,
@@ -45,10 +42,10 @@ def setup_db():
         )
     ''')
     cur.execute("INSERT INTO config (key_name, key_value) VALUES ('version', '1.0'), ('notice', 'Chào mừng!') ON CONFLICT DO NOTHING")
+    
     conn.commit()
     cur.close()
     conn.close()
-
 
 @app.route('/api/config', methods=['GET'])
 def get_config():
@@ -149,7 +146,7 @@ def admin_login():
         cur.close()
         conn.close()
         if res and res[0] is True:
-            session['admin_logged_in'], session['admin_username'] = True, user
+            session['admin_logged_in'], session['admin_username'] = user
             return redirect(url_for('admin_dashboard'))
         return render_template_string(LOGIN_HTML, error="Sai tài khoản hoặc không đủ quyền!")
     return render_template_string(LOGIN_HTML, error=None)
