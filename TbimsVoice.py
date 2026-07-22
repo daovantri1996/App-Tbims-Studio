@@ -146,7 +146,8 @@ def admin_login():
         cur.close()
         conn.close()
         if res and res[0] is True:
-            session['admin_logged_in'], session['admin_username'] = user
+            session['admin_logged_in'] = True
+            session['admin_username'] = user
             return redirect(url_for('admin_dashboard'))
         return render_template_string(LOGIN_HTML, error="Sai tài khoản hoặc không đủ quyền!")
     return render_template_string(LOGIN_HTML, error=None)
