@@ -7,15 +7,11 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = "tbims_super_secret_admin_key"
 
-# Link Database (Render tự nạp từ Environment)
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 
-# ==========================================
-# 1. CÀI ĐẶT DATABASE TỰ ĐỘNG
-# ==========================================
 @app.before_request
 def setup_db():
     app.before_request_funcs[None].remove(setup_db)
@@ -53,9 +49,7 @@ def setup_db():
     cur.close()
     conn.close()
 
-# ==========================================
-# 2. API CHO TOOL DESKTOP
-# ==========================================
+
 @app.route('/api/config', methods=['GET'])
 def get_config():
     conn = get_db_connection()
@@ -83,6 +77,10 @@ def register():
     except Exception as e:
         return jsonify({"detail": f"Lỗi Server: {str(e)}"}), 400
 
+
+# ==========================================
+# 🔥 BỘ LỌC LOGIN SIÊU BẢO MẬT 🔥
+# ==========================================
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
@@ -99,25 +97,41 @@ def login():
         if user:
             db_pass, status, exp_date, is_admin, db_hwid = user
             
-            # 1. Check Pass
-            if password != db_pass: return jsonify({"detail": "Sai mật khẩu!"}), 400
+            # 1. Sai pass đuổi luôn
+            if password != db_pass: 
+                return jsonify({"detail": "Sai mật khẩu!"}), 400
             
-            # 2. Admin Auto Pass
-            if is_admin: return jsonify({"status": status, "exp_date": exp_date, "is_admin": True}), 200
+            # 2. ADMIN CÓ KIM BÀI MIỄN TỬ (Bỏ qua mọi kiểm tra)
+            if is_admin: 
+                return jsonify({"status": status, "exp_date": exp_date, "is_admin": True}), 200
 
-            # 3. Check HWID
+            # 3. KHÁCH MỚI CHƯA DUYỆT CẤM VÀO
+            exp_str = str(exp_date).strip().lower()
+            if 'chưa' in exp_str or 'duyệt' in exp_str:
+                return jsonify({"detail": "Tài khoản đang chờ duyệt! Vui lòng liên hệ Admin."}), 400
+
+            # 4. KHÁCH ĐÃ HẾT HẠN SỬ DỤNG THEO NGÀY (VD: 20/07/2026)
+            if exp_str != 'vĩnh viễn':
+                try:
+                    exp_dt = datetime.strptime(str(exp_date).strip(), '%d/%m/%Y')
+                    # Nếu ngày hôm nay lớn hơn ngày hết hạn -> Khóa
+                    if datetime.now() > exp_dt:
+                        # (Tùy chọn: Bác có thể auto Update trạng thái về LOCKED ở đây luôn cũng được)
+                        return jsonify({"detail": f"Tài khoản của bạn đã hết hạn từ ngày {exp_date}!"}), 400
+                except ValueError:
+                    # Nếu Admin gõ sai định dạng ngày (không phải dạng DD/MM/YYYY) thì bỏ qua kiểm tra tự động
+                    pass
+
+            # 5. KHÁCH ĐỔI MÁY / SAI HWID
             if not db_hwid or db_hwid.strip() == '':
                 cur.execute('UPDATE users SET hwid = %s WHERE username = %s', (client_hwid, username))
                 conn.commit()
             elif db_hwid != client_hwid:
                 return jsonify({"detail": "Sai mã máy tính (HWID)! Hãy liên hệ Admin."}), 400
 
-            # 4. KHÓA TÀI KHOẢN CHƯA DUYỆT (Chốt chặn mới thêm)
-            if exp_date == 'Chưa duyệt':
-                return jsonify({"detail": "Tài khoản đang chờ duyệt! Vui lòng liên hệ Admin."}), 400
-
-            # 5. Khóa mõm
-            if status != 'ACTIVE': return jsonify({"detail": "Tài khoản của bạn đã bị KHÓA!"}), 400
+            # 6. KHÁCH BỊ ADMIN KHÓA MÕM
+            if status != 'ACTIVE': 
+                return jsonify({"detail": "Tài khoản của bạn đã bị KHÓA!"}), 400
             
             return jsonify({"status": status, "exp_date": exp_date, "is_admin": False}), 200
         else:
